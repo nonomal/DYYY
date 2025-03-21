@@ -1378,7 +1378,13 @@
     %orig;
 
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideQuqishuiting"]) {
-        self.hidden = YES;
+        // 找到父视图并隐藏
+        UIView *parentView = self.superview;
+        if (parentView) {
+            parentView.hidden = YES;
+        } else {
+            self.hidden = YES;
+        }
     }
 }
 
@@ -1417,7 +1423,6 @@
     NSMutableArray *viewModels = [NSMutableArray array];
     
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYLongPressDownload"]) {
-
         if (self.awemeModel.awemeType != 68) {
             AWELongPressPanelBaseViewModel *downloadViewModel = [[%c(AWELongPressPanelBaseViewModel) alloc] init];
             downloadViewModel.awemeModel = self.awemeModel;
@@ -1496,13 +1501,11 @@
             imageViewModel.actionType = 669;
             imageViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
             imageViewModel.describeString = @"保存当前图片";
-            
-            //获取图片并且判断图片是否为实况
+                        
             AWEImageAlbumImageModel *currimge = self.awemeModel.albumImages[self.awemeModel.currentImageIndex - 1];
              if (currimge.clipVideo != nil) {
                 imageViewModel.describeString = @"保存当前实况";
              }
-            //点击事件
             imageViewModel.action = ^{
                 AWEAwemeModel *awemeModel = self.awemeModel;
                 AWEImageAlbumImageModel *currentImageModel = nil;
@@ -1515,11 +1518,10 @@
                 //如果是实况的话
                 if (currimge.clipVideo != nil) {
                     NSURL *url = [NSURL URLWithString:currentImageModel.urlList.firstObject];
-
-                    [DYYYManager downloadLivePhoto:[currimge.clipVideo.playURL getDYYYSrcURLDownload] mediaType:MediaTypeVideo completion:^{
-                    }];
-
-                    [DYYYManager downloadLivePhoto:url mediaType:MediaTypeImage completion:^{
+                    NSURL *videoURL = [currimge.clipVideo.playURL getDYYYSrcURLDownload];
+                    
+                    [DYYYManager downloadLivePhoto:url videoURL:videoURL completion:^{
+                        [DYYYManager showToast:@"实况照片已保存到相册"];
                     }];
                 }else if (currentImageModel && currentImageModel.urlList.count > 0) {
                     NSURL *url = [NSURL URLWithString:currentImageModel.urlList.firstObject];
@@ -1528,6 +1530,9 @@
                     }];
                 }
                 
+                    
+                AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
+                [panelManager dismissWithAnimation:YES completion:nil];
             };
             
             [viewModels addObject:imageViewModel];
@@ -1539,6 +1544,19 @@
                 allImagesViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
                 allImagesViewModel.describeString = @"保存所有图片";
                 
+                // 检查是否有实况照片并更改按钮文字
+                BOOL hasLivePhoto = NO;
+                for (AWEImageAlbumImageModel *imageModel in self.awemeModel.albumImages) {
+                    if (imageModel.clipVideo != nil) {
+                        hasLivePhoto = YES;
+                        break;
+                    }
+                }
+                
+                if (hasLivePhoto) {
+                    allImagesViewModel.describeString = @"保存所有实况";
+                }
+
                 allImagesViewModel.action = ^{
                     AWEAwemeModel *awemeModel = self.awemeModel;
                     NSMutableArray *imageURLs = [NSMutableArray array];
@@ -1549,7 +1567,33 @@
                         }
                     }
                     
-                    if (imageURLs.count > 0) {
+                    // 检查是否有实况照片
+                    BOOL hasLivePhoto = NO;
+                    for (AWEImageAlbumImageModel *imageModel in awemeModel.albumImages) {
+                        if (imageModel.clipVideo != nil) {
+                            hasLivePhoto = YES;
+                            break;
+                        }
+                    }
+                    
+                    // 如果有实况照片，使用单独的downloadLivePhoto方法逐个下载
+                    if (hasLivePhoto) {
+                        NSMutableArray *livePhotos = [NSMutableArray array];
+                        for (AWEImageAlbumImageModel *imageModel in awemeModel.albumImages) {
+                            if (imageModel.urlList.count > 0 && imageModel.clipVideo != nil) {
+                                NSURL *photoURL = [NSURL URLWithString:imageModel.urlList.firstObject];
+                                NSURL *videoURL = [imageModel.clipVideo.playURL getDYYYSrcURLDownload];
+                                
+                                [livePhotos addObject:@{
+                                    @"imageURL": photoURL.absoluteString,
+                                    @"videoURL": videoURL.absoluteString
+                                }];
+                            }
+                        }
+                        
+                        // 使用批量下载实况照片方法
+                        [DYYYManager downloadAllLivePhotos:livePhotos];
+                    } else if (imageURLs.count > 0) {
                         [DYYYManager downloadAllImages:imageURLs];
                     }
                     
@@ -1579,7 +1623,7 @@
         };
         
         [viewModels addObject:copyText];
-
+        
         // 新增复制分享链接
         AWELongPressPanelBaseViewModel *copyShareLink = [[%c(AWELongPressPanelBaseViewModel) alloc] init];
         copyShareLink.awemeModel = self.awemeModel;
@@ -1597,6 +1641,7 @@
         };
         
         [viewModels addObject:copyShareLink];
+    
     }
     
     newGroupModel.groupArr = viewModels;
@@ -1630,7 +1675,7 @@
             AWELongPressPanelBaseViewModel *downloadViewModel = [[%c(AWELongPressPanelBaseViewModel) alloc] init];
             downloadViewModel.awemeModel = self.awemeModel;
             downloadViewModel.actionType = 666;
-            downloadViewModel.duxIconName = @"ic";
+            downloadViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
             downloadViewModel.describeString = @"保存视频";
             
             downloadViewModel.action = ^{
@@ -1708,7 +1753,6 @@
             AWEImageAlbumImageModel *currimge = self.awemeModel.albumImages[self.awemeModel.currentImageIndex - 1];
              if (currimge.clipVideo != nil) {
                 imageViewModel.describeString = @"保存当前实况";
-
              }
             imageViewModel.action = ^{
                 AWEAwemeModel *awemeModel = self.awemeModel;
@@ -1722,11 +1766,10 @@
                 //如果是实况的话
                 if (currimge.clipVideo != nil) {
                     NSURL *url = [NSURL URLWithString:currentImageModel.urlList.firstObject];
-
-                    [DYYYManager downloadLivePhoto:[currimge.clipVideo.playURL getDYYYSrcURLDownload] mediaType:MediaTypeVideo completion:^{
-                    }];
-
-                    [DYYYManager downloadLivePhoto:url mediaType:MediaTypeImage completion:^{
+                    NSURL *videoURL = [currimge.clipVideo.playURL getDYYYSrcURLDownload];
+                    
+                    [DYYYManager downloadLivePhoto:url videoURL:videoURL completion:^{
+                        [DYYYManager showToast:@"实况照片已保存到相册"];
                     }];
                 }else if (currentImageModel && currentImageModel.urlList.count > 0) {
                     NSURL *url = [NSURL URLWithString:currentImageModel.urlList.firstObject];
@@ -1749,6 +1792,19 @@
                 allImagesViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
                 allImagesViewModel.describeString = @"保存所有图片";
                 
+                // 检查是否有实况照片并更改按钮文字
+                BOOL hasLivePhoto = NO;
+                for (AWEImageAlbumImageModel *imageModel in self.awemeModel.albumImages) {
+                    if (imageModel.clipVideo != nil) {
+                        hasLivePhoto = YES;
+                        break;
+                    }
+                }
+                
+                if (hasLivePhoto) {
+                    allImagesViewModel.describeString = @"保存所有实况";
+                }
+
                 allImagesViewModel.action = ^{
                     AWEAwemeModel *awemeModel = self.awemeModel;
                     NSMutableArray *imageURLs = [NSMutableArray array];
@@ -1759,7 +1815,33 @@
                         }
                     }
                     
-                    if (imageURLs.count > 0) {
+                    // 检查是否有实况照片
+                    BOOL hasLivePhoto = NO;
+                    for (AWEImageAlbumImageModel *imageModel in awemeModel.albumImages) {
+                        if (imageModel.clipVideo != nil) {
+                            hasLivePhoto = YES;
+                            break;
+                        }
+                    }
+                    
+                    // 如果有实况照片，使用单独的downloadLivePhoto方法逐个下载
+                    if (hasLivePhoto) {
+                        NSMutableArray *livePhotos = [NSMutableArray array];
+                        for (AWEImageAlbumImageModel *imageModel in awemeModel.albumImages) {
+                            if (imageModel.urlList.count > 0 && imageModel.clipVideo != nil) {
+                                NSURL *photoURL = [NSURL URLWithString:imageModel.urlList.firstObject];
+                                NSURL *videoURL = [imageModel.clipVideo.playURL getDYYYSrcURLDownload];
+                                
+                                [livePhotos addObject:@{
+                                    @"imageURL": photoURL.absoluteString,
+                                    @"videoURL": videoURL.absoluteString
+                                }];
+                            }
+                        }
+                        
+                        // 使用批量下载实况照片方法
+                        [DYYYManager downloadAllLivePhotos:livePhotos];
+                    } else if (imageURLs.count > 0) {
                         [DYYYManager downloadAllImages:imageURLs];
                     }
                     
@@ -2107,6 +2189,7 @@ static BOOL isDownloadFlied = NO;
     return bestURL;
 }
 %end
+
 %ctor {
     %init(DYYYSettingsGesture);
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYUserAgreementAccepted"]) {
